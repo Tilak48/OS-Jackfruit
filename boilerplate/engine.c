@@ -278,15 +278,32 @@ static void bounded_buffer_begin_shutdown(bounded_buffer_t *buffer)
     pthread_mutex_unlock(&buffer->mutex);
 }
 
-/*
- * TODO:
- * Implement producer-side insertion into the bounded buffer.
- *
- * Requirements:
- *   - block or fail according to your chosen policy when the buffer is full
- *   - wake consumers correctly
- *   - stop cleanly if shutdown begins
- */
+int bounded_buffer_push(bounded_buffer_t *buffer, const log_item_t *item)
+{
+    pthread_mutex_lock(&buffer->mutex);
+
+    // Wait if buffer is full
+    while (buffer->count == LOG_BUFFER_CAPACITY && !buffer->shutting_down) {
+        pthread_cond_wait(&buffer->not_full, &buffer->mutex);
+    }
+
+    // If shutdown started, stop
+    if (buffer->shutting_down) {
+        pthread_mutex_unlock(&buffer->mutex);
+        return -1;
+    }
+
+    // Insert item
+    buffer->items[buffer->tail] = *item;
+    buffer->tail = (buffer->tail + 1) % LOG_BUFFER_CAPACITY;
+    buffer->count++;
+
+    // Notify consumer
+    pthread_cond_signal(&buffer->not_empty);
+
+    pthread_mutex_unlock(&buffer->mutex);
+    return 0;
+}
 int bounded_buffer_push(bounded_buffer_t *buffer, const log_item_t *item)
 {
     (void)buffer;
