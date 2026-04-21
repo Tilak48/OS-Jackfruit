@@ -374,17 +374,30 @@ void *logging_thread(void *arg)
     return NULL;
 }
 
-/*
- * TODO:
- * Implement the clone child entrypoint.
- *
- * Required outcomes:
- *   - isolated PID / UTS / mount context
- *   - chroot or pivot_root into rootfs
- *   - working /proc inside container
- *   - stdout / stderr redirected to the supervisor logging path
- *   - configured command executed inside the container
- */
+void *logging_thread(void *arg)
+{
+    supervisor_ctx_t *ctx = (supervisor_ctx_t *)arg;
+    log_item_t item;
+
+    while (1) {
+        // Get next log item
+        if (bounded_buffer_pop(&ctx->log_buffer, &item) != 0) {
+            break; // shutdown condition
+        }
+
+        // For simplicity: write all logs to one file
+        FILE *f = fopen("container.log", "a");
+        if (f == NULL) {
+            perror("fopen failed");
+            continue;
+        }
+
+        fwrite(item.data, 1, item.length, f);
+        fclose(f);
+    }
+
+    return NULL;
+}
 int child_fn(void *arg)
 {
     (void)arg;
