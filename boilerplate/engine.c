@@ -311,15 +311,32 @@ int bounded_buffer_push(bounded_buffer_t *buffer, const log_item_t *item)
     return -1;
 }
 
-/*
- * TODO:
- * Implement consumer-side removal from the bounded buffer.
- *
- * Requirements:
- *   - wait correctly while the buffer is empty
- *   - return a useful status when shutdown is in progress
- *   - avoid races with producers and shutdown
- */
+int bounded_buffer_pop(bounded_buffer_t *buffer, log_item_t *item)
+{
+    pthread_mutex_lock(&buffer->mutex);
+
+    // Wait while buffer is empty
+    while (buffer->count == 0 && !buffer->shutting_down) {
+        pthread_cond_wait(&buffer->not_empty, &buffer->mutex);
+    }
+
+    // If empty and shutdown started → exit
+    if (buffer->count == 0 && buffer->shutting_down) {
+        pthread_mutex_unlock(&buffer->mutex);
+        return -1;
+    }
+
+    // Remove item
+    *item = buffer->items[buffer->head];
+    buffer->head = (buffer->head + 1) % LOG_BUFFER_CAPACITY;
+    buffer->count--;
+
+    // Notify producer
+    pthread_cond_signal(&buffer->not_full);
+
+    pthread_mutex_unlock(&buffer->mutex);
+    return 0;
+}
 int bounded_buffer_pop(bounded_buffer_t *buffer, log_item_t *item)
 {
     (void)buffer;
